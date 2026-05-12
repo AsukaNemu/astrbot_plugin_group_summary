@@ -4,6 +4,7 @@ from collections import defaultdict, deque
 
 # datetime 用来给缓存的群聊消息打一个当前时间标签。
 from datetime import datetime
+from pathlib import Path
 
 # AstrBot 提供的日志对象，报错时写日志，方便在控制台/日志文件里排查。
 from astrbot.api import logger
@@ -102,6 +103,19 @@ class GroupSummaryPlugin(Star):
         self.group_buffers = defaultdict(
             lambda: deque(maxlen=self.max_messages)
         )
+
+        # 从 metadata.yaml 读取版本号
+        self.version = self._load_version()
+
+    def _load_version(self) -> str:
+        try:
+            meta_path = Path(__file__).parent / "metadata.yaml"
+            for line in meta_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("version:"):
+                    return line.split(":", 1)[1].split("#")[0].strip()
+        except Exception:
+            pass
+        return "unknown"
 
     def get_session_key(self, event: AstrMessageEvent) -> str:
         """
@@ -320,6 +334,10 @@ class GroupSummaryPlugin(Star):
         # 成功拿到总结后，把总结文本作为普通消息发回群里。
         yield event.plain_result(summary)
         await self.send_private_summary(event, summary)
+
+    @filter.command(".version")
+    async def version_command(self, event: AstrMessageEvent):
+        yield event.plain_result(f"astrbot_plugin_group_summary {self.version}")
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
