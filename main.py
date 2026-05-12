@@ -95,6 +95,10 @@ class GroupSummaryPlugin(Star):
         # defaultdict(lambda: deque(...)) 的意思是：
         # 当访问 self.group_buffers[某个新群] 时，自动创建一个新的 deque 缓存。
         # maxlen=self.max_messages 会限制队列最大长度，超过后自动删除最旧的一条。
+        # 管理员 QQ 号，总结时会私聊发一份给这个人。
+        # 留空或不填则不发送。
+        self.admin_qq = config.get("admin_qq", "").strip()
+
         self.group_buffers = defaultdict(
             lambda: deque(maxlen=self.max_messages)
         )
@@ -213,6 +217,25 @@ class GroupSummaryPlugin(Star):
 
         # 用换行符把多行聊天记录拼成一个字符串。
         return "\n".join(lines)
+
+    async def send_private_summary(self, event: AstrMessageEvent, summary: str):
+        """
+        把总结私聊发给配置里的管理员。
+
+        如果没配置 admin_qq、或者发送失败，就静默跳过，不影响群内正常回复。
+        """
+        if not self.admin_qq:
+            return
+
+        session_key = self.get_session_key(event)
+        group_label = session_key.split(":")[-1] if ":" in session_key else session_key
+        private_text = f"[{group_label}] 的群聊总结：\n\n{summary}"
+
+        try:
+            platform = self.context.get_platform()
+            await platform.send_private_message(self.admin_qq, private_text)
+        except Exception as e:
+            logger.warning(f"私聊发送总结失败：{e}")
 
     async def call_llm_summary(self, chat_log: str) -> str:
         """
