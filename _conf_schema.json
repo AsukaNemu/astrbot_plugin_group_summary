@@ -1,0 +1,17 @@
+{
+  "max_messages": {
+    "description": "每个群缓存的最大消息数量",
+    "type": "int",
+    "default": 50
+  },
+  "trigger_words": {
+    "description": "触发总结的关键词，英文逗号分隔",
+    "type": "string",
+    "default": "总结,省流,刚刚聊啥,刚才聊啥,前面聊啥"
+  },
+  "ignore_short_message": {
+    "description": "是否忽略过短水群消息",
+    "type": "bool",
+    "default": true
+  }
+}
