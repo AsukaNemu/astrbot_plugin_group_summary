@@ -246,8 +246,8 @@ class GroupSummaryPlugin(Star):
         private_text = f"[{group_label}] 的群聊总结：\n\n{summary}"
 
         try:
-            platform = self.context.get_platform()
-            await platform.send_private_message(self.admin_qq, private_text)
+            session_id = f"private:{self.admin_qq}"
+            await self.context.send_message(session_id, private_text)
         except Exception as e:
             logger.warning(f"私聊发送总结失败：{e}")
 

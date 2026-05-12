@@ -1,8 +1,12 @@
 # Changelog
 
+## v0.1.6
+
+- 修复私聊转发 API 调用方式，改用 `context.send_message`
+
 ## v0.1.5
 
-- 新增 `.version` 命令，输出当前插件版本号
+- 新增 `/.version` 命令，输出当前插件版本号
 
 ## v0.1.4
 
