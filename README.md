@@ -1,14 +1,37 @@
-# astrbot-plugin-helloworld
+# astrbot_plugin_group_summary
 
-AstrBot 插件模板 / A template plugin for AstrBot plugin feature
+AstrBot 群聊内容总结插件。缓存群聊消息，支持触发词和命令两种方式调用 LLM 生成群聊总结。
 
-> [!NOTE]
-> This repo is just a template of [AstrBot](https://github.com/AstrBotDevs/AstrBot) Plugin.
-> 
-> [AstrBot](https://github.com/AstrBotDevs/AstrBot) is an agentic assistant for both personal and group conversations. It can be deployed across dozens of mainstream instant messaging platforms, including QQ, Telegram, Feishu, DingTalk, Slack, LINE, Discord, Matrix, etc. In addition, it provides a reliable and extensible conversational AI infrastructure for individuals, developers, and teams. Whether you need a personal AI companion, an intelligent customer support agent, an automation assistant, or an enterprise knowledge base, AstrBot enables you to quickly build AI applications directly within your existing messaging workflows.
+## 功能
 
-# Supports
+- 自动缓存群聊消息，过滤无意义的水群内容（"哈哈"、"6"、"？"等）
+- 触发词总结：发送"总结"、"省流"、"刚刚聊啥"等关键词自动触发
+- 命令总结：发送 `/总结` 触发
+- 私聊转发：总结生成后可自动私聊发送一份给管理员
 
-- [AstrBot Repo](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot Plugin Development Docs (Chinese)](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [AstrBot Plugin Development Docs (English)](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+## 安装
+
+将本仓库克隆或下载到 AstrBot 的 `data/plugins/` 目录下，重启 AstrBot 即可自动加载。
+
+## 配置
+
+在 AstrBot 管理后台的插件配置中可调整以下选项：
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `max_messages` | int | 50 | 每个群缓存的最大消息数量 |
+| `trigger_words` | string | 总结,省流,刚刚聊啥,刚才聊啥,前面聊啥 | 触发总结的关键词，英文逗号分隔 |
+| `ignore_short_message` | bool | true | 是否忽略过短的水群消息 |
+| `admin_qq` | string | （空） | 管理员 QQ 号，填写后总结时会私聊发一份副本 |
+
+## 使用
+
+- 在群里发包含触发词的消息（如"省流"、"刚刚聊啥"）
+- 或者发送命令 `/总结`
+
+插件会读取最近缓存的群聊消息，调用 LLM 生成总结并回复到群里。
+
+## 依赖
+
+- AstrBot >= v4.5.0
+- 需要 AstrBot 已配置可用的 LLM provider

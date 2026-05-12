@@ -1,5 +1,5 @@
 # defaultdict：字典里访问不存在的 key 时，可以自动创建默认值。
-# deque：双端队列，这里用它做“固定长度消息缓存”，超过 maxlen 会自动挤掉最旧消息。
+# deque：双端队列，这里用它做"固定长度消息缓存"，超过 maxlen 会自动挤掉最旧消息。
 from collections import defaultdict, deque
 
 # datetime 用来给缓存的群聊消息打一个当前时间标签。
@@ -17,7 +17,7 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 
 
-# 多行字符串，作为发送给大模型的“系统提示词/任务说明”。
+# 多行字符串，作为发送给大模型的"系统提示词/任务说明"。
 # 三个引号 """...""" 可以保留换行，适合写较长的 prompt。
 SUMMARY_PROMPT = """
 你是 QQ 群聊总结助手。
@@ -32,18 +32,18 @@ SUMMARY_PROMPT = """
 5. 有没有争论或玩梗
 
 不要逐句复述。
-不要总结“哈哈哈”“草”“6”“？”这类无意义消息。
-如果大量人在围绕某个梗互动，可以简单说“后面主要是在围绕 xxx 玩梗”。
+不要总结"哈哈哈""草""6""？"这类无意义消息。
+如果大量人在围绕某个梗互动，可以简单说"后面主要是在围绕 xxx 玩梗"。
 
 回复要像群友说话，不要像 AI 报告。
-不要说“根据聊天记录”“以下是总结”“综上所述”。
+不要说"根据聊天记录""以下是总结""综上所述"。
 可以说：
-“省流：……”
-“刚刚主要是在聊……”
-“结论差不多是……”
-“还没定的是……”
+"省流：……"
+"刚刚主要是在聊……"
+"结论差不多是……"
+"还没定的是……"
 
-如果信息不足，就说“不太够总结，只能看出……”
+如果信息不足，就说"不太够总结，只能看出……"
 不要编造没有出现的信息。
 """
 
@@ -69,7 +69,7 @@ class GroupSummaryPlugin(Star):
         # int(...) 确保最终是整数，避免配置里读出来是字符串。
         self.max_messages = int(config.get("max_messages", 50))
 
-        # 是否忽略低信息量短消息，例如“哈哈哈”“6”“？”。
+        # 是否忽略低信息量短消息，例如"哈哈哈""6""？"。
         # bool(...) 把配置值转成布尔值。
         self.ignore_short_message = bool(config.get("ignore_short_message", True))
 
@@ -135,7 +135,7 @@ class GroupSummaryPlugin(Star):
 
         返回 True 表示忽略，False 表示应该缓存。
         """
-        # strip() 去掉首尾空白，避免“  哈哈  ”这种影响判断。
+        # strip() 去掉首尾空白，避免"  哈哈  "这种影响判断。
         text = text.strip()
 
         # 空消息没有总结价值，直接忽略。
@@ -148,11 +148,11 @@ class GroupSummaryPlugin(Star):
         if any(word in text for word in self.trigger_words):
             return True
 
-        # 如果配置关闭了“忽略短消息”，上面的空消息/触发词判断之后就都保留。
+        # 如果配置关闭了"忽略短消息"，上面的空消息/触发词判断之后就都保留。
         if not self.ignore_short_message:
             return False
 
-        # set 集合适合做“某个值是否存在”的判断，速度快，写法也清楚。
+        # set 集合适合做"某个值是否存在"的判断，速度快，写法也清楚。
         low_info_messages = {
             "哈", "哈哈", "哈哈哈", "草", "6", "？", "?", "。", "啊", "嗯",
             "来了", "在吗", "okk", "ok", "hh", "hhh", "hhhh"
@@ -186,7 +186,7 @@ class GroupSummaryPlugin(Star):
 
         session_key = self.get_session_key(event)
 
-        # 尽量拿发送者昵称；如果平台不支持或报错，就用“某群友”兜底。
+        # 尽量拿发送者昵称；如果平台不支持或报错，就用"某群友"兜底。
         try:
             sender = event.get_sender_name()
         except Exception:
@@ -290,7 +290,7 @@ class GroupSummaryPlugin(Star):
         `/总结` 命令入口。
 
         上面的装饰器含义：
-        - @filter.command("总结")：只有命令是“总结”时才触发
+        - @filter.command("总结")：只有命令是"总结"时才触发
         - @filter.event_message_type(...)：只处理群聊消息
 
         async def 表示这是异步函数；AstrBot 会在事件循环里调用它。
@@ -302,7 +302,9 @@ class GroupSummaryPlugin(Star):
         if not chat_log.strip():
             # yield event.plain_result(...) 是 AstrBot 插件常见返回方式：
             # yield 把一条回复结果交还给框架发送出去。
-            yield event.plain_result("不太够总结，前面没攒到什么有效消息。")
+            msg = "不太够总结，前面没攒到什么有效消息。"
+            yield event.plain_result(msg)
+            await self.send_private_summary(event, msg)
             return
 
         try:
@@ -310,11 +312,14 @@ class GroupSummaryPlugin(Star):
         except Exception as e:
             # 调模型失败时记录错误，并给群里一个友好的失败提示。
             logger.error(f"群聊总结失败：{e}")
-            yield event.plain_result("总结的时候出错了，可能是模型接口没调通。")
+            msg = "总结的时候出错了，可能是模型接口没调通。"
+            yield event.plain_result(msg)
+            await self.send_private_summary(event, msg)
             return
 
         # 成功拿到总结后，把总结文本作为普通消息发回群里。
         yield event.plain_result(summary)
+        await self.send_private_summary(event, summary)
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
@@ -327,22 +332,27 @@ class GroupSummaryPlugin(Star):
         text = (event.message_str or "").strip()
         session_key = self.get_session_key(event)
 
-        # 如果消息里包含触发词，例如“省流”或“刚刚聊啥”，就开始总结。
+        # 如果消息里包含触发词，例如"省流"或"刚刚聊啥"，就开始总结。
         if self.is_summary_trigger(text):
             chat_log = self.build_chat_log(session_key)
 
             if not chat_log.strip():
-                yield event.plain_result("不太够总结，前面没攒到什么有效消息。")
+                msg = "不太够总结，前面没攒到什么有效消息。"
+                yield event.plain_result(msg)
+                await self.send_private_summary(event, msg)
                 return
 
             try:
                 summary = await self.call_llm_summary(chat_log)
             except Exception as e:
                 logger.error(f"群聊总结失败：{e}")
-                yield event.plain_result("总结的时候出错了，可能是模型接口没调通。")
+                msg = "总结的时候出错了，可能是模型接口没调通。"
+                yield event.plain_result(msg)
+                await self.send_private_summary(event, msg)
                 return
 
             yield event.plain_result(summary)
+            await self.send_private_summary(event, summary)
             return
 
         # 如果不是触发词消息，就把它当作普通聊天内容缓存起来。
