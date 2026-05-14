@@ -14,21 +14,23 @@ class GroupSummaryPlugin(Star):
         config = getattr(self, "config", {}) or {}
 
         trigger_words_raw = config.get(
-            "trigger_words", "总结,省流,刚刚聊啥,刚才聊啥,前面聊啥"
+            "trigger_words", "总结,省流,刚刚聊啥,刚才聊啥,前面聊啥,聊了什么,说啥了,刚才说什么,看不懂,说的啥,什么意思,讲了啥,前面内容,回顾一下,说什么了,聊啥呢,啥情况"
         )
         trigger_words = [
             w.strip() for w in trigger_words_raw.split(",") if w.strip()
         ]
 
+        self.engine = SummaryEngine(
+            context=context,
+            persona_name=config.get("persona", "").strip(),
+        )
+
         self.buffer = MessageBuffer(
             max_messages=int(config.get("max_messages", 50)),
             trigger_words=trigger_words,
             ignore_short_message=bool(config.get("ignore_short_message", True)),
-        )
-
-        self.engine = SummaryEngine(
-            context=context,
-            persona_name=config.get("persona", "").strip(),
+            summary_engine=self.engine,
+            ai_intent_detection=bool(config.get("ai_intent_detection", True)),
         )
 
         self.version = self._load_version()
@@ -58,16 +60,16 @@ class GroupSummaryPlugin(Star):
             pass
         return "unknown_session"
 
-    def _cache_event_message(self, event: AstrMessageEvent):
+    async def _cache_event_message(self, event: AstrMessageEvent):
         text = (event.message_str or "").strip()
-        if self.buffer.should_ignore_message(text):
+        if await self.buffer.should_ignore_message(text):
             return
         session_key = self._get_session_key(event)
         try:
             sender = event.get_sender_name()
         except Exception:
             sender = "某群友"
-        self.buffer.cache_message(session_key, sender, text)
+        await self.buffer.cache_message(session_key, sender, text)
 
     async def _do_summary(self, event: AstrMessageEvent):
         session_key = self._get_session_key(event)
@@ -91,6 +93,8 @@ class GroupSummaryPlugin(Star):
     async def summarize_command(self, event: AstrMessageEvent):
         async for r in self._do_summary(event):
             yield r
+        # 阻止事件继续传播，避免被其他处理器重复处理
+        event.stop_event()
 
     @filter.command(".version")
     async def version_command(self, event: AstrMessageEvent):
@@ -100,12 +104,14 @@ class GroupSummaryPlugin(Star):
     async def on_group_message(self, event: AstrMessageEvent):
         text = (event.message_str or "").strip()
 
-        if self.buffer.is_summary_trigger(text):
+        if await self.buffer.is_summary_trigger(text):
             async for r in self._do_summary(event):
                 yield r
+            # 阻止事件继续传播，避免被其他处理器（如自带Agent）重复处理
+            event.stop_event()
             return
 
-        self._cache_event_message(event)
+        await self._cache_event_message(event)
 
     async def terminate(self):
         self.buffer.clear()

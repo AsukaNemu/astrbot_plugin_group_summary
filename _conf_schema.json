@@ -19,5 +19,10 @@
     "type": "string",
     "default": "",
     "_special": "select_persona"
+  },
+  "ai_intent_detection": {
+    "description": "是否开启AI意图识别，自动判断用户是否想要总结（会增加token消耗）",
+    "type": "bool",
+    "default": true
   }
 }
