@@ -48,6 +48,24 @@ SUMMARY_PROMPT = """
 不要编造没有出现的信息。
 """
 
+PERSONA_PROMPT = """
+你是一个群聊总结机器人，你需要把下面这段总结用你的人设重新表达。
+
+你的人设：
+{persona}
+
+要求：
+- 保留总结的所有关键信息，不要丢掉任何要点
+- 用你的人设口吻重新组织语言
+- 不要加多余的寒暄或自我介绍，直接输出改写后的总结
+- 不要解释你是怎么改写的
+
+原始总结：
+{summary}
+
+请直接输出改写后的总结：
+"""
+
 
 # 插件主体类。
 # 继承 Star 表示这是一个 AstrBot 插件，AstrBot 会实例化这个类并调用里面被装饰器标记的方法。
@@ -91,15 +109,15 @@ class GroupSummaryPlugin(Star):
             if word.strip()
         ]
 
+        # 人格设定名称，来自 AstrBot WebUI 的人格管理。
+        # 选了之后总结会按该人格口吻重新编排输出。
+        self.persona = config.get("persona", "").strip()
+
         # key: session_id / group_id
         # value: deque[dict]
         # defaultdict(lambda: deque(...)) 的意思是：
         # 当访问 self.group_buffers[某个新群] 时，自动创建一个新的 deque 缓存。
         # maxlen=self.max_messages 会限制队列最大长度，超过后自动删除最旧的一条。
-        # 管理员 QQ 号，总结时会私聊发一份给这个人。
-        # 留空或不填则不发送。
-        self.admin_qq = config.get("admin_qq", "").strip()
-
         self.group_buffers = defaultdict(
             lambda: deque(maxlen=self.max_messages)
         )
@@ -116,6 +134,21 @@ class GroupSummaryPlugin(Star):
         except Exception:
             pass
         return "unknown"
+
+    def _get_persona_text(self) -> str:
+        if not self.persona:
+            return ""
+        try:
+            db = self.context.get_db()
+            row = db.execute(
+                "SELECT prompt FROM persona WHERE persona_name = ?",
+                (self.persona,)
+            ).fetchone()
+            if row and row[0]:
+                return row[0]
+        except Exception as e:
+            logger.warning(f"读取人格设定失败：{e}")
+        return ""
 
     def get_session_key(self, event: AstrMessageEvent) -> str:
         """
@@ -232,25 +265,6 @@ class GroupSummaryPlugin(Star):
         # 用换行符把多行聊天记录拼成一个字符串。
         return "\n".join(lines)
 
-    async def send_private_summary(self, event: AstrMessageEvent, summary: str):
-        """
-        把总结私聊发给配置里的管理员。
-
-        如果没配置 admin_qq、或者发送失败，就静默跳过，不影响群内正常回复。
-        """
-        if not self.admin_qq:
-            return
-
-        session_key = self.get_session_key(event)
-        group_label = session_key.split(":")[-1] if ":" in session_key else session_key
-        private_text = f"[{group_label}] 的群聊总结：\n\n{summary}"
-
-        try:
-            session_id = f"private:{self.admin_qq}"
-            await self.context.send_message(session_id, private_text)
-        except Exception as e:
-            logger.warning(f"私聊发送总结失败：{e}")
-
     async def call_llm_summary(self, chat_log: str) -> str:
         """
         这里是最容易因 AstrBot 版本不同而需要改的地方。
@@ -281,21 +295,32 @@ class GroupSummaryPlugin(Star):
         # text_chat 是真正向大模型发送 prompt 的地方。
         response = await provider.text_chat(prompt=prompt)
 
-        # 不同 provider 返回值可能不同，做几种兼容
-        # 有些实现直接返回字符串。
+        summary = self._extract_response_text(response)
+
+        persona_text = self._get_persona_text()
+        if persona_text:
+            summary = await self._apply_persona(summary, persona_text)
+
+        return summary
+
+    def _extract_response_text(self, response) -> str:
         if isinstance(response, str):
             return response.strip()
-
-        # 有些实现返回对象，并把文本放在 completion_text 属性里。
         if hasattr(response, "completion_text"):
             return response.completion_text.strip()
-
-        # 有些实现返回对象，并把文本放在 text 属性里。
         if hasattr(response, "text"):
             return response.text.strip()
-
-        # 最后兜底：把返回值强制转成字符串。
         return str(response).strip()
+
+    async def _apply_persona(self, summary: str, persona_text: str) -> str:
+        prompt = PERSONA_PROMPT.format(persona=persona_text, summary=summary)
+        try:
+            provider = self.context.get_using_provider()
+            response = await provider.text_chat(prompt=prompt)
+            return self._extract_response_text(response)
+        except Exception as e:
+            logger.warning(f"人格改写失败，返回原始总结：{e}")
+            return summary
 
     @filter.command("总结")
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
@@ -316,9 +341,7 @@ class GroupSummaryPlugin(Star):
         if not chat_log.strip():
             # yield event.plain_result(...) 是 AstrBot 插件常见返回方式：
             # yield 把一条回复结果交还给框架发送出去。
-            msg = "不太够总结，前面没攒到什么有效消息。"
-            yield event.plain_result(msg)
-            await self.send_private_summary(event, msg)
+            yield event.plain_result("不太够总结，前面没攒到什么有效消息。")
             return
 
         try:
@@ -326,14 +349,11 @@ class GroupSummaryPlugin(Star):
         except Exception as e:
             # 调模型失败时记录错误，并给群里一个友好的失败提示。
             logger.error(f"群聊总结失败：{e}")
-            msg = "总结的时候出错了，可能是模型接口没调通。"
-            yield event.plain_result(msg)
-            await self.send_private_summary(event, msg)
+            yield event.plain_result("总结的时候出错了，可能是模型接口没调通。")
             return
 
         # 成功拿到总结后，把总结文本作为普通消息发回群里。
         yield event.plain_result(summary)
-        await self.send_private_summary(event, summary)
 
     @filter.command(".version")
     async def version_command(self, event: AstrMessageEvent):
@@ -355,22 +375,17 @@ class GroupSummaryPlugin(Star):
             chat_log = self.build_chat_log(session_key)
 
             if not chat_log.strip():
-                msg = "不太够总结，前面没攒到什么有效消息。"
-                yield event.plain_result(msg)
-                await self.send_private_summary(event, msg)
+                yield event.plain_result("不太够总结，前面没攒到什么有效消息。")
                 return
 
             try:
                 summary = await self.call_llm_summary(chat_log)
             except Exception as e:
                 logger.error(f"群聊总结失败：{e}")
-                msg = "总结的时候出错了，可能是模型接口没调通。"
-                yield event.plain_result(msg)
-                await self.send_private_summary(event, msg)
+                yield event.plain_result("总结的时候出错了，可能是模型接口没调通。")
                 return
 
             yield event.plain_result(summary)
-            await self.send_private_summary(event, summary)
             return
 
         # 如果不是触发词消息，就把它当作普通聊天内容缓存起来。

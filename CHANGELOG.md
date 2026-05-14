@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.8
+
+- 新增人格设定支持，总结可按 AstrBot 已有人设重新编排输出
+- 配置项新增 `persona`，通过 WebUI 选择人格
+
+## v0.1.7
+
+- 移除私聊转发功能（API 不兼容）
+
 ## v0.1.6
 
 - 修复私聊转发 API 调用方式，改用 `context.send_message`

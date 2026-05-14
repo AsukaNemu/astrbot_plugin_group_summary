@@ -13,5 +13,11 @@
     "description": "是否忽略过短水群消息",
     "type": "bool",
     "default": true
+  },
+  "persona": {
+    "description": "选择人格设定，总结会按该人格口吻重新编排输出。留空则不改写。",
+    "type": "string",
+    "default": "",
+    "_special": "select_persona"
   }
 }
