@@ -1,5 +1,16 @@
 from collections import defaultdict, deque
 from datetime import datetime
+from astrbot.api import logger
+
+
+def _extract_response_text(response) -> str:
+    if isinstance(response, str):
+        return response.strip()
+    if hasattr(response, "completion_text"):
+        return response.completion_text.strip()
+    if hasattr(response, "text"):
+        return response.text.strip()
+    return str(response).strip()
 
 
 class MessageBuffer:
@@ -113,14 +124,16 @@ class MessageBuffer:
 用户的话：{text}"""
 
             # 调用LLM
-            response = await self.summary_engine.context.llm(prompt)
-            result = self.summary_engine._extract_response_text(response).strip().lower()
+            provider = self.summary_engine.context.get_using_provider()
+            response = await provider.text_chat(prompt=prompt)
+            result = _extract_response_text(response).strip().lower()
 
             # 判断结果
             return "是" in result or "yes" in result
 
         except Exception as e:
             # AI调用失败时降级到规则判断
+            logger.warning(f"AI意图识别失败，降级到规则：{e}")
             return False
 
     async def cache_message(self, session_key: str, sender: str, text: str):
